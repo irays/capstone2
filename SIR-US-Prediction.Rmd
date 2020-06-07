@@ -1,0 +1,542 @@
+---
+title: "COVID-19 US Prediction"
+author: "MFR"
+date: "6/5/2020"
+output: pdf_document
+always_allow_html: true
+source_code: hide
+css: style.css
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+## File Name: SIR-US-Prediction.Rmd
+## Executive Summary:
+This project made use of two different datasets, one is a past dataset from Kaggle [1] and another one is an ongoing data from JHU CCSE [2]. Analyses revealed that two datasets contain different number of columns with different types of information. Kaggle data is a past COVID-19 data covering mostly the onset of pandemic in China on the other hand JHU CCSE is an ongoing data mainly to be used for "COVID-19 US Prediction" using SIR model. Maching learning algorithms are applied on Kaggle dataset that revealed some interesting facts related to mostly to gender and age of the pandemic patients. Kaggle dataset revealed that mean age of 48 years who survived, on the other hand the mean age of about 68.6 years and older were victims of death. After calculating the means, we see that men in this dataset have a death rate of 8.5% as opposed to 3.7% in women. The accuracy of this calculation is being further verified by calculating the Accuracy = 0.5524862, Sensitivity = 0.5194805, Specificity = 0.5769231 and with a kind of high Prevalence = 0.4254144.   
+
+Therefore, the main focus of this project is based on the study of the propagation pattern of the COVID19 pandemic in US using a widely used SIR model. A R-library is created that can be fetched from Github [3]. The prediction is made over a period of 150 days starting from the first US reported death on February 29 up to the projected end sometime at the end of July, 2020. In this analysis an initial population, N is considered to be 20.23M which is the combined population of New York City (8.399M), Washington (7.615M) and Oregon (4.218M). We calculated the optimized parameter $\beta$ that controls the transition between S to I (susceptible (S) to infectious (I)) and $\gamma$ that controls the transition between I to R (infectious (I) to recovered (R)) to be  0.4132663 and 0.2659657 respectively. Furthermore, we estimated the reproduction number of 1.55, and using the formula $1-\frac{1}{R_{0}} = 1 - \frac{1}{1.44} = 0.35$, about ${35.00\%}$ of the population of US which is about 115 million, need to be vaccinated to stop the pandemic in the future. Based on the updated US data for the period of February 29 to June 04, the model predicts what happens if the pandemic continues over a total time span of 150 days or longer. It is estimated from the analysis that peak infected case already happened around May 20, 2020, and the pandemic is expected to come back to the normal state sometime in the middle of July, 2020. The __RMSE__ of the prediction comes out to be 695 which is very small with respect to the big number of infected cases in the US. This paper is based on the similar case study reported in [4] but adapted for US with modifications with our own library and methods.  
+
+## Introduction:
+
+To analyze the Kaggle dataset and for performing the __Machine Learning__ the caret package used for generating the training and test sets is by splitting the data with specified proportions. The __confusion matrix__, which basically tabulates each combination of prediction and actual value were calculated along with t-test to verify the accuracy of the results.
+
+The data from JHU CCSE was mainly used for up-to-date status of the COVID-19 in the US and the code can be easily modified to apply for other countries. Users can choose from a variety of common Ordinary Differential Equation (ODE) models (such as the SIR, SEIR, SIRS, and SIS models), or create on their own to study various kinds of epidemic and pandemic diseases. The objective of this study is to find ways to adapt COVID-19 data to make predictions of the propagation of COVID-19 and take appropriate measures to slow down the spread of the disease to save human lives.
+
+In this analysis we expect to estimate the expected numbers of individuals over time who will be infected, recovered, susceptible, or dead. Infected individuals first pass through an exposed/incubation phase where they are asymptomatic and not infectious, and then move into a symptomatic to infectious stage classified by the clinical status of infection (mild, severe, or critical). The initial population size, initial conditions, and parameter values are used to simulate the spread of infection. In SIR model we consider S susceptible, I infectious and R recovered cases to start with the simulation. Susceptible become infected at a rate equal to the product of an infectious contact rate $\beta$ and the number of infectious I. Infectious people recover at a rate $\gamma$.
+
+## Timeline of COVID-19 Pandemic:
+The first outbreak of novel corona virus was reported sometime in December 2019 from Wuhan, China. In the span of about four months this virus spread to almost all countries in the world. As of May 10, 2020, more than 4.10 million people got infected and about 0.28 million people lost their lives. Many data scientists are trying to predict the nature and timeline of its propagation to save human lives as many as possible by taking all practical measures including social distancing in their models. The first death case was reported by Chinese state media on January 11, 2020, of a 61-year-old man from Wuhan, the capital city of Hubei province. On January 21, 2020, United States declared its first infected case with a man in his 30s from Washington State, who traveled to Wuhan. Oregon, Washington and New York soon report their own cases of possible community transmission. On January 23, 2020, Chinese government imposed strict measures in Wuhan by shutting down almost all activities including travel restrictions in air, trains, subways, buses and put restrictions on public gathering, mass congregation, closing all schools, and colleges. On January 30, 2020, WHO declares global health emergency a __"public health emergency of international concern".__ On February 11, 2020, novel coronavirus was named as __Corona Virus Disease 2019__ with its abbreviation as __COVID-19__. On February 26, 2020, the Centers for Disease Control and Prevention (CDC) confirms the first case of COVID-19 infection in a patient in California with no travel history to an outbreak area. The first reported death in the USA was on February 29, 2020, however, a death in Santa Clara, California, on February 6 is considered to be the first COVID-19 death. In this analysis the data is considered to be from February 29, 2020, to June 04, 2020, but the prediction is made upto the end of July, 2020.
+
+## Loading the required libraries
+```{r,warning=FALSE,message=FALSE}
+library(covid19)
+library(deSolve)
+library(tidyverse)
+library(data.table)
+library(magrittr)
+library(lubridate)
+library(gridExtra)
+library(kableExtra)
+library(plotly)
+library(DT)
+library(ggplot2)
+library(dplyr)
+# install.packages("webshot")
+# webshot::install_phantomjs()
+library(webshot)
+
+```
+
+## Downloading dataset from Kaggle for initial analysis
+## https://www.kaggle.com/sudalairajkumar/novel-corona-virus-2019-dataset/discussion/139288
+####################################################################################
+```{r,warning=FALSE,message=FALSE}
+## Downloading dataset from Kaggle for initial analysis
+## https://www.kaggle.com/sudalairajkumar/novel-corona-virus-2019-dataset/discussion/139288
+## Loading Hmisc library translating SAS datasets into S
+library(Hmisc)
+## Reading COVID19_line_list_data.csv from local drive
+corona <- read.csv("C:/Users/MfR/COVID19-Capstone/Kaggle/COVID19_line_list_data.csv")
+
+## The number of rows and columns in the dataset
+dim(corona)
+
+```
+## Clening data by elimating NA's
+```{r,warning=FALSE,message=FALSE}
+# if death variable isn't 0, then the patient has died
+corona$death_dummy <- as.integer(corona$death != 0)
+
+# death rate of our dataset
+sum(corona$death_dummy) / nrow(corona)
+```
+
+# Age Analysis
+After running the abovee code, we discover that the mean age of 48 years who survived, on the other hand the mean age of about 68.6 years and older who have died.
+
+```{r,warning=FALSE,message=FALSE}
+dead = subset(corona, death_dummy == 1)
+alive = subset(corona, death_dummy == 0)
+mean(dead$age, na.rm=TRUE)
+mean(alive$age, na.rm=TRUE)
+
+t.test(dead$age, alive$age, alternative="two.sided", conf.level = 0.95)
+```
+We see from the above code that the death rate of our dataset, which is about 5.8%. 
+Next we will try to analyze the age group of people who have died and of those who did not.
+
+# Gender Analysis
+```{r,warning=FALSE,message=FALSE}
+men = subset(corona, gender == "male")
+women = subset(corona, gender == "female")
+mean(men$death_dummy, na.rm=TRUE)
+mean(women$death_dummy, na.rm=TRUE)
+t.test(men$death_dummy, women$death_dummy, alternative="two.sided", conf.level = 0.95)
+
+v3 <- rbind(men,women) # combine objects as rows
+
+summary(v3)
+dim(v3)
+
+```
+We subset our original data into two sets. After calculating the means, we see that men in this dataset have a death rate of 8.5% as opposed to 3.7% in women. Well, this is unexpected. Again, can we trust this data? Here is the t.test output:
+
+Our confidence interval of 95% shows that man will have from 1.7% to 7.8% higher death rate than women. A p-value of 0.002 signifies that we can reject the null hypothesis that men and women have the same death rate, since 0.002 < 0.05. There have been articles written that men indeed do have a higher coronavirus death rate. Here is one of them if you are interested.
+
+## Loading caret package for Machine Learning
+```{r,warning=FALSE,message=FALSE}
+library(caret)
+
+y <- v3$gender
+summary(y)
+x <- v3$age
+summary(x)
+
+## Splitting data into Training and test sets
+set.seed(2007)
+test_index <- createDataPartition(y, times = 1, p = 0.2, list = FALSE)
+
+test_set <- v3[test_index, ]
+train_set <- v3[-test_index, ]
+
+y_hat <- sample(c("male", "female"), length(test_index), replace = TRUE)
+
+y_hat <- sample(c("male", "female"), length(test_index), replace = TRUE) %>%
+  factor(levels = levels(test_set$gender))
+
+# The overall accuracy is simply defined as the overall proportion that is predicted correctly:
+
+mean(y_hat == test_set$gender)
+
+table(predicted = y_hat, actual = test_set$gender)
+
+# If we study this table closely, it reveals a problem. If we compute the accuracy separately for each sex, we get:
+
+test_set %>%
+  mutate(y_hat = y_hat) %>% group_by(gender) %>%
+  summarise(accuracy = mean(y_hat == gender))
+
+# Not surprisingly, our accuracy is about 55%. We are guessing!
+prev <- mean(y == "female")
+prev
+
+cm <- confusionMatrix(data = y_hat, reference = test_set$gender)
+cm$overall["Accuracy"]
+
+cm$byClass[c("Sensitivity","Specificity", "Prevalence")]
+```
+
+####################################################################################
+## Loading covid19 Library that updates COVID-19 Data from JHU-CCSE:
+
+The 'covid19' dataset contains the worldwide daily __confirmed__, __recovered__, and __death__ cases of the COVID-19 (the 2019 Novel Coronavirus COVID-19). Let's load the dataset from the **covid19** package:
+
+```{r,warning=FALSE,message=FALSE}
+# install.packages("devtools")
+devtools::install_github("irays/covid19")
+```
+The dataset has the following fields:
+
+* `date` - The date of the summary
+* `Province.State` - The province or state, when applicable
+* `Country.Region` - The country or region name
+* `Lat` - Latitude point
+* `Long`- Longitude point
+* `cases` - the number of daily cases (corresponding to the case type)
+* `type` - the type of case (i.e., confirmed, death)
+
+We can use the `head`, 'tail' and `str` functions to see the structure of the dataset:
+```{r}
+head(covid19)
+tail(covid19)
+str(covid19)
+
+```
+
+## Countrywise Tabular Data
+```{r,warning=FALSE,message=FALSE}
+covid19 %>%
+  filter(Country.Region != "Others") %>%
+  group_by(Country.Region, type) %>%
+  summarise(total_cases = sum(cases)) %>%
+  pivot_wider(names_from = type, values_from = total_cases) %>%
+  arrange(- confirmed) %>%
+  filter(confirmed >= 25) %>%
+  mutate(death_rate = death / confirmed)  %>%
+  datatable(rownames = FALSE,
+            colnames = c("Confirmed", "Death","Recovered", "Death Rate")) %>%
+  formatPercentage("death_rate", 2)
+```
+
+## Coronavirus - Worldwide Cumulative Distribution as Bar Diagram
+```{r,warning=FALSE,message=FALSE}
+`%>%` <- magrittr::`%>%`
+
+# extract the cumulative incidence
+df <- covid19 %>%
+  dplyr::filter(Country.Region == "US") %>%
+  dplyr::group_by(date, type) %>%
+  dplyr::summarise(total = sum(cases, na.rm = TRUE)) %>%
+  tidyr::pivot_wider(
+    names_from = type,
+    values_from = total
+  ) %>%
+  dplyr::arrange(date) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(active = confirmed - death - recovered) %>%
+  dplyr::mutate(
+    confirmed_cum = cumsum(confirmed),
+    death_cum = cumsum(death),
+    recovered_cum = cumsum(recovered),
+    active_cum = cumsum(active)
+  )
+
+total_cases <- covid19 %>%
+  group_by(type) %>%
+  summarise(cases = sum(cases)) %>%
+  mutate(type = factor(type, levels = c("confirmed", "recovered","death")))
+
+total_cases
+
+plot_ly(data = total_cases,
+        x = ~ type,
+        y = ~cases,
+        type = 'bar',
+        text = ~ paste(type, cases, sep = ": "),
+        hoverinfo = 'text') %>%
+  layout(title = "Coronavirus - Cases Distribution",
+         yaxis = list(title = "Number of Cases"),
+         xaxis = list(title = "Case Type"),
+         hovermode = "compare")
+```
+
+## Table of the top ten countries with the highest confirmed cases.
+```{r,warning=FALSE,message=FALSE}
+confirmed_country <- covid19 %>%
+  filter(type == "confirmed") %>%
+  group_by(Country.Region) %>%
+  summarise(total_cases = sum(cases)) %>%
+  mutate(perc = total_cases / sum(total_cases)) %>%
+  arrange(-total_cases)
+
+confirmed_country %>%
+  head(10) %>%
+  datatable(rownames = FALSE,
+            colnames = c("Country", "Cases", "Perc of Total")) %>%
+  formatPercentage("perc", 2)
+```
+
+## The SIR Model for Spread of Disease:
+In this study SIR model is used. A graphical representation of SIR Model is shown in the figure below:
+
+![](C:/Users/MfR/Capstone2_2020/SIR.png)
+
+SIR model has 3 variables S, I and R which are respectively the numbers of susceptibles, infectious and recovered, and has two parameters $\beta$ and $\gamma$ which are respectively the infection rate and the recovery rate.
+
+The basic idea behind the SIR model is based on three groups of people with the following assumptions:
+
+S: is assumed to be the entire population of New York City, Washington State and Oregon who were susceptible to the disease since no one was immued to the disease, 
+
+I: the infected population, and
+
+R: individuals who were contaminated but who have either recovered or died. 
+
+The dependent variables represent the fraction of the total population in each of the three categories. In this analysis  N is cosidered to be $20,232,000$ which is the combined population of New York City (8.399M), Washington (7.615) and Oregon (4.218) where the pandemic started in the USA on $February~29,~2020$. 
+
+
+\begin{equation}
+\frac{dS}{dt} = -\beta S(t) I(t)/N
+\end{equation}
+
+where $\beta$ is the rate of infection, which controls the transition between S and I,
+
+\begin{equation}
+\frac{dI}{dt} = \beta S(t) I(t)/N-\gamma I(t)
+\end{equation}
+
+
+and $\gamma$ is the recovery rate, which controls the transition between I and R.
+
+
+\begin{equation}
+\frac{dR}{dt} = \gamma I(t) 
+\end{equation}
+
+The first equation (Eq. 1) states that the number of susceptible individuals (S) decreases with the number of newly infected individuals, where new infected cases are the result of the infection rate $\beta$ multiplied by the number of susceptible individuals (S) who had a contact with infected individuals (I).
+
+The second equation (Eq. 2) states that the number of infectious individuals (I) increases with the newly infected individuals $\beta IS$, minus the previously infected people who recovered (i.e., $\gamma I$ which is the removal rate $\gamma I$ multiplied by the infectious individuals I).
+
+Finally, the last equation (Eq. 3) states that the recovered group (R) increases with the number of individuals who were infectious and who either recovered or died ($\gamma I$).
+
+An epidemic develops as follows:
+
+- Before the start of the disease outbreak, S equals the entire population as no one has anti-bodies.
+- At the beginning of the outbreak, as soon as the first individual is infected, S decreases by 1 and I increases by 1 as well.
+- This first infectious individual contaminates (before recovering or dying) other individuals who were susceptible.
+- The dynamic continues, with recently contaminated individuals who in turn infect other susceptible people before they recover.
+
+## Solving Differential Equations of SIR Model:
+Solving a system of differential equations means finding the values of the variables (here S, I and R) at a number of points in time. These values will depend on the parameters’ values. We can numerically solve differential equations in R using __ode()__ function of the __deSolve__ package. If this package is not installed on your system, you need to install it.
+
+```{r,warning=FALSE,message=FALSE}
+SIR <- function(time, state, parameters) {
+  par <- as.list(c(state, parameters))
+  with(par, {
+    dS <- -beta * I * S / N
+    dI <- beta * I * S / N - gamma * I
+    dR <- gamma * I
+    list(c(dS, dI, dR))
+  })
+}
+
+```
+
+## The initial values of the variables need to be defined in a named vector: 
+Put the daily cumulative incidence numbers for US from February 29 to May 10 into a vector called __Infected__. Create an incrementing Day vector with the same length as our cases vector. 
+
+``````{r,warning=FALSE,message=FALSE}
+sir_start_date <- "2020-02-29"
+sir_end_date <- "2020-06-04"
+# active = confirmed-death-recovered
+# active_cum = cumsum(active)
+Infected <- subset(df, date >= ymd(sir_start_date) & date <= ymd(sir_end_date))$active_cum
+
+# Create an incrementing Day vector the same length as our
+# cases vector
+Day <- 1:(length(Infected))
+
+# now specify initial values for N, S, I and R
+# N is the population of New York City (8.399M), Washington (7.615) and Oregon (4.218)
+N <- 20232000
+# N <- 331002651 # (total US population)
+# The initial values of the variables need to be defined in a named vector:
+init <- c(
+  S = N - Infected[1],
+  I = Infected[1],
+  R = 0
+)
+```
+
+## Training and testing using the residual mean squared error (RMSE):
+The regression approaches for epidemic analysis are trained and tested on realtime data using the number of confirmed, recovered, and death cases as the label for the corresponding day. The residual sum of squares (RSS) is the most widely used objective function and root mean square error (RMSE) as a metric function for evaluating the regression models.
+
+Passing in parameters beta and gamma that are to be optimized for the best fit to the
+incidence data. Fitting a SIR model to the US data we need the following two things:
+
+1. a solver for solving the three differential equations
+2. an optimizer to find the optimal values for our two unknown parameters, $\beta$
+and $\gamma$.
+
+The function ode() (for ordinary differential equations) from the {deSolve} R package makes solving the system of equations easy, and to find the optimal values for the parameters we wish to estimate, we can just use the optim() function built into base R.
+
+Specifically, what we need to do is to minimize the sum of the squared differences between I(t), which is the number of infected people at time t, and the corresponding number of cases as predicted by the model $\hat I$. The quantity to minimize is called residual mean squared error (RMSE). Passing in parameters beta and gamma that are to be optimized for the best fit to the incidence data. In order to fit a model to the incidence data for US, we need a value N for the initial uninfected population. To start the simulation we need to specify initial values for N, S, I and R. Here, N is assumed to be the population of New York City (8.399M), Washington (7.615) and Oregon (4.218) combined is N = 20232000.
+
+Next, we need to create a vector with the daily cumulative incidence for US, from February 29 (when first daily incidence data starts in the US), through to June 04 (last available data). We will then compare the predicted incidence from the SIR model fitted to these data with the actual incidence since February 29. The daily cumulative incidence data for US is loaded from the {covid19} R-package developed in this work.
+
+
+\begin{equation}
+RMSE(\beta,\gamma) = \sqrt {\frac{1}{N}\sum_{t} (I(t) - \hat I(t))^2}
+\end{equation}
+
+where I(t) indicates the real infected dat value, and $\hat I(t)$ indicates the predicted value, and N is the total number of days predicted.
+
+```{r,warning=FALSE,message=FALSE}
+RMSE <- function(parameters) {
+  names(parameters) <- c("beta", "gamma")
+  out <- ode(y = init, times = Day, func = SIR, parms = parameters)
+  fit <- out[, 3]
+  sqrt((1/N)*sum((Infected - fit)^2))
+}
+```
+
+Now we find the values of beta and gamma that give the smallest RMSE, which represents the best fit to the data. First we check for convergence and once it is confirmed then we get the fitted or optimized parameters $\beta$ and $\gamma$. Once the convergence is confirmed then we can examine the fitted values for beta and gamma for further analysis and prediction of the spread of COVID19.
+
+```{r,warning=FALSE,message=FALSE}
+# Start with values of 0.5 for each, and constrain them to
+# the interval 0 to 1.0
+
+Opt <- optim(c(0.69, 0.49),
+             RMSE,
+             method = "L-BFGS-B",
+             lower = c(0, 0),
+             upper = c(1, 1)
+)
+
+# check for convergence
+Opt$message
+# Convergence is confirmed. Now we can examine the fitted values for beta and gamma
+
+Opt_par <- setNames(Opt$par, c("beta", "gamma"))
+Opt_par
+
+```
+
+```{r,warning=FALSE,message=TRUE}
+# time in days for predictions
+# t <- 1:as.integer(ymd(sir_end_date) - 1 - ymd(sir_start_date)) # odd date
+t <- 1:as.integer(ymd(sir_end_date) + 1 - ymd(sir_start_date)) # odd date
+# t <- 1:as.integer(ymd(sir_end_date) - ymd(sir_start_date)) # even date
+
+# get the fitted values from our SIR model
+# add a Date column and the observed incidence data
+fitted_cumulative_incidence <- data.frame(ode(
+  y = init, times = t,
+  func = SIR, parms = Opt_par
+))
+
+fitted_cumulative_incidence <- fitted_cumulative_incidence %>%
+  mutate(
+    Date = ymd(sir_start_date) + days(t),
+    Country = "US",
+    cumulative_incident_cases = Infected
+  )
+
+```
+
+With the optimized parameter $\beta$ and $\gamma$ that controls the transition between S to I (susceptible (S) to infectious (I)) and controls the transition between I to R ( infectious (I) to recovered (R)) respectively. The plot for the fitted data with the observed data collected from JHU in the time span of February 29 to June 04 is shown in the figure below. The y-axis of the following plot is on a log10 scale versus time in days.
+
+```{r,warning=FALSE,message=FALSE}
+fitted_cumulative_incidence %>%
+  ggplot(aes(x = Date)) +
+  geom_line(aes(y = I), colour = "red") +
+  geom_point(aes(y = cumulative_incident_cases), colour = "blue") +
+  labs(
+    y = "Cumulative Infected",
+    title = "COVID-19 SIR Fitted (Red) vs Infected (Blue), US",
+    subtitle = "(Red = SIR Fitted Curve, blue = JHUCCSE)"
+  ) +
+  theme_minimal() +
+  scale_y_log10(labels = scales::comma)
+```
+
+## Reproduction number $R_{0}$
+In this study SIR model with best fit to the observed cumulative incidence data in US, so as to get the correct reproduction number $R_{0}$, also referred to as basic reproduction ratio, and is given by:
+
+
+\begin{equation}
+R_{0}=\frac{\beta}{\gamma}   
+\end{equation}
+
+
+In other words, the reproduction number $R_{0}$ refers to the number of healthy people that get infected per number of infected people.
+
+If $R_{0}$ is greater than $R_{0}>1$, the infection will spread exponentially. If $R_{0}$ is less than $R_{0}<1$, the infection will spread very slowly, and it will eventually die down. The higher the value of $R_{0}$, the faster an epidemic or a pandemic will spread.
+
+In this simulation $R_{0}$ comes out to be 1.55 which is relatively lower than reported by others for COVID-19 which is in the range 2.2–2.7 for Wuhan, China [5]. In the literature, it has been estimated that the reproduction number for COVID-19 is approximately 2.7 (with $\beta$ close to 0.54 and $\gamma$ close to 0.2). Our reproduction number being lower is mainly due to the fact that the number of confirmed cases stayed constant and equal to 1 at the beginning of the pandemic. 
+
+A $R_{0}$ of 1.55 means that, on average in US, 1.55 persons are infected for each infected person. For simple models, the proportion of the population that needs to be effectively immunized to prevent sustained spread of the disease, known as the “herd immunity threshold”, has to be larger than $1-\frac{1}{R_{0}}$. 
+
+The reproduction number of 1.55 that we estimated suggests that about ${35.00\%}$ of the population should be immunized to stop the spread of the infection. Considering the population in US of approximately 328.20 million, about 115 million people need to be vaccinated to stop the spread of this disease.
+
+```{r,warning=FALSE,message=FALSE}
+
+Opt_par
+
+R0 <- as.numeric(Opt_par[1] / Opt_par[2])
+R0
+```
+
+Now we make time series predictions in days for the period of 150 days and plot them to see their pattern for finding the end date for this pandemic. 
+
+```{r,warning=FALSE,message=FALSE}
+
+t <- 1:140
+
+# get the fitted values from our SIR model
+fitted_cumulative_incidence <- data.frame(ode(
+  y = init, times = t,
+  func = SIR, parms = Opt_par
+))
+
+# add a Date column and join the observed incidence data
+fitted_cumulative_incidence <- fitted_cumulative_incidence %>%
+  mutate(
+    Date = ymd(sir_start_date) + days(t),
+    Country = "US",
+    cumulative_incident_cases = c(Infected, rep(NA, length(t) - length(Infected)))
+  )
+
+```
+
+Based on the available US data for the period of February 29 to June 04, the model now preddicts what happens if the pandemic continues over a total time span of 150 days.
+The y-axis is in log10 scale in persons versus the time in days.
+
+```{r,warning=FALSE,message=FALSE}
+# plot the data
+fitted_cumulative_incidence %>%
+  ggplot(aes(x = Date)) +
+  geom_line(aes(y = I, colour = "red")) +
+  geom_line(aes(y = S, colour = "black")) +
+  geom_line(aes(y = R, colour = "green")) +
+  geom_point(aes(y = cumulative_incident_cases, colour = "blue")) +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    y = "Persons",
+    title = "COVID-19 SIR Fitted (Red) vs Infected (Blue), US"
+  ) +
+  scale_colour_manual(
+    name = "",
+    values = c(red = "red", black = "black", green = "green", blue = "blue"),
+    labels = c("Susceptible", "Observed", "Recovered", "Infectious")
+  ) +
+  theme_minimal()
+```
+
+The date of peak of pandemic in the US with maximum infected and maximum death. Maximum Infected = confirmed - death - recovered.   
+
+```{r,warning=FALSE,message=FALSE}
+fit <- fitted_cumulative_incidence
+
+fit[fit$I == max(fit$I), c("Date", "I")]
+
+# severe cases
+max_infected <- max(fit$I)
+max_infected*0.07476
+
+# deaths with supposed to be about 7.0% fatality rate (Confirmed - Recovered = 1014560)
+# Death rate (Total death/(Confirmed - Recovered))
+```
+
+## RMSE with optimized parameter
+```{r,warning=FALSE,message=FALSE}
+RMSE(Opt_par)
+
+```
+
+## Conclusions:
+This paper is the outcome of a very simple SIR epidemiological model. The numbers we ended up with are very close to the actual data. A better model called SEIR could be used for accomodating the effect of social distancing. SEIR model is similar to the SIR model, where S stands for Susceptible and R stands for Recovered, but the infected people are divided into two categories, E stands for the exposed/infected is asymptomatic and I for the infected and symptomatic. Both SIR and SEIR models belong to the continuous-time dynamic models that assume fixed transition rates. In our analysis we used a fixed reproduction number $R_{0}$ but it reality it is much more realistic to estimate the current effective reproduction number $R_{e}$ on a day-by-day basis so as to track the effectiveness of public health interventions, such as social distancing and increased number of tests etc. This project resulted in a numerical comparison with visual presentation of the fitted and observed cumulative incidence in US. The graphs indicated the exponetial nature of the COVID-19 pandemic in US with peak reaching sometime in May 20 and is expected to fall and come to a normal state sometime in the end of July, 2020, provided public health intervention is in strict compliance. 
+
+We estimated the reproduction number of 1.55 using the optimized $\beta$ and $\gamma$  that suggests that about 35.00% of the population should be immunized to stop the spread of the infection. Considering the total population in US of approximately 328.2 million, about 115 million need to be vaccinated. Based on the available US data for the period of February 29 to June 04, the model now preddicts what happens if the pandemic continues over a total time span of 150 days. It is estimated from the analysis that peak infected case will happen around May 20, 2020, and is expected to come down to the normal state sometime at the end of July, 2020. Humans are expected to fight in against of the natural epidemic or pandemic with their all kinds of resources because life is more important than the material resources and wealth. However, we must also ensure that there are sufficient resources, medical supplies and PPEs are available for treating infected patients that will help them to survive or increase the chances for their survival rates.
+
+Unlike the small __RMSE__ value of Movilens project which was rated with maximum rating of 5.0. The estimated __RMSE__ value in this project is about __695__ with optical parameters which is very small with respect to US infected cases of the order of more than 100,000 and bigger.
+
+__References:__
+
+1. https://www.kaggle.com/sudalairajkumar/novel-corona-virus-2019-dataset/discussion/139288
+2. https://systems.jhu.edu/research/public-health/ncov/
+3. https://github.com/irays/covid19
+4. https://www.statsandr.com/blog/covid-19-in-belgium/#more-sophisticated-projections.
+5. High Contagiousness and Rapid Spread of Severe Acute Respiratory Syndrome Coronavirus-2, Volume 26, Number 7—July 2020, Steven Sanche, Yen Ting Lin, Chonggang Xu, Ethan Romero-Severson, Nick Hengartner, and Ruian Ke.
